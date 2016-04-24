@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+	<title>das verflixte Fischspiel: Solver by Benedikt Vogler in JS</title>	
+	<style type="text/css">
+		body {
+			font-family:Helvetica,Arial,sans-serif;
+		}
+		
+		p {
+			clear: none;
+			margin:0;
+		}
+		
+		#Spielfeld {
+			margin-left: 5px;
+			margin-bottom: 15px;
+			margin-right: 5px;
+			margin-top: 5px;
+			background-color: #ff00b5;
+			position:relative;
+			float:left;
+			top:10px;
+		}
+		
+		#Options {
+			position:relative;
+			float: left;
+			top:50px;
+			left:0;
+			width:500px;
+			border-style: solid;
+			border-width: 2px solid;
+			border-left-color: #afafaf;
+			border-bottom-color: black;
+			border-right-color: black;
+			border-top-color: #afafaf;
+			margin: 5px;
+			background-color: #919191;
+		}
+		
+	</style>
+	<script type="application/javascript">
+	
+	//var x=5;alert(x==5?"then":"else")
+	
+		//config
+		//literale kurzschreibweise
+		var config = {
+			enablelog: false,//Log ausgeben?
+			drawoften: false //nach jeder änderung neu zeichnen, etwa 40 mal langsamer
+		};		
+		
+		//getPosition ersetzten, Kante[0] sollte die linke Kante sein, statt getKante(0) ->drehen und tauschen umbauen dafür auslesen schneller udn einfacher.
+		var log = "";
+		var partnersave = new Array(4);
+		var click_partner1 = -1;
+		var savefieldcounter = 0;
+		var Speicher = new Array();	
+		Speicher[0] = new Array(9);	
+		
+				//Kartenklasse definieren
+		Karte = function(kanten, nummer) {
+			this.kante = kanten;
+			this.nummer = nummer;
+		};		
+		
+		Karte.prototype.getKante = function(nr) {
+			//gibt Kante aus
+			return this.kante[nr];
+		};
+		
+		Karte.prototype.getPasszahl = function() {
+			//gibt Passzahl aus
+			return this.passzahl;
+		};
+		
+			
+		/*
+		ca. 5% mehr speed durch Zahlen statt strings
+		gelb=0
+		rot=1
+		blau=2
+		gruen=3
+				
+		kopf=1
+		fuss=0
+		*/
+		
+		Speicher[0][0] = new Karte([
+			{farbe: 0, form: 1},
+			{farbe: 1, form: 0},
+			{farbe: 3, form: 0},
+			{farbe: 2, form: 1}
+			],0
+		);
+		
+		Speicher[0][1] = new Karte([
+			{farbe: 2, form: 1},
+			{farbe: 0, form: 0},
+			{farbe: 3, form: 0},
+			{farbe: 1, form: 1}
+			],1
+		);
+		
+		Speicher[0][2] = new Karte([
+			{farbe: 3, form: 1},
+			{farbe: 1, form: 0},
+			{farbe: 0, form: 0},
+			{farbe: 1, form: 1}
+		],2
+		);
+		
+		Speicher[0][3] = new Karte([
+			{farbe: 0, form: 1},
+			{farbe: 3, form: 1},
+			{farbe: 1, form: 0},
+			{farbe: 2, form: 0}
+			],3
+		);
+		Speicher[0][4] = new Karte([
+			{farbe: 3, form: 1},
+			{farbe: 0, form: 0},
+			{farbe: 1, form: 0},
+			{farbe: 2, form: 1}
+			],4
+		);		
+		Speicher[0][5] = new Karte([
+			{farbe: 0, form: 0},
+			{farbe: 2, form: 0},
+			{farbe: 1, form: 1},
+			{farbe: 3, form: 1}
+			],5
+		);
+		Speicher[0][6] = new Karte([
+			{farbe: 3, form: 1},
+			{farbe: 1, form: 0},
+			{farbe: 2, form: 0},
+			{farbe: 0, form: 1}
+			],6
+		);
+		Speicher[0][7] = new Karte([
+			{farbe: 2, form: 1},
+			{farbe: 0, form: 0},
+			{farbe: 3, form: 0},
+			{farbe: 0, form: 1}
+			],7
+		);
+		Speicher[0][8] = new Karte([
+			{farbe: 2, form: 1},
+			{farbe: 1, form: 0},
+			{farbe: 0, form: 0},
+			{farbe: 3, form: 1}
+			],8
+		);
+		
+		function savefield(full,extra){
+			//speichert Feldi m Speicher, auf letzten Slot. Wenn full=true, dann speichert er auch die locs. Feld 9 ist für Zusatzinfos.
+			Speicher[Speicher.length] = new Array(9);
+			for (var loc = 0; loc < 9; loc++) Speicher[Speicher.length-1][loc] = Spielfeld.positionen[loc].lage;
+			if (typeof(extra)!="undefined") Speicher[Speicher.length-1][9] = extra;//extrafeld für zusatzinfo, meistens tablepoints
+		};
+		
+		function loadfield(slot){
+			if (slot==-1) slot = Speicher.length-1;//letzter Eintrag
+			for (var loc = 0; loc < 9; loc++) Spielfeld.inlagedrehen(loc,Speicher[slot][loc]);//lädt nur die Lage
+		};
+		
+				
+		Spielfeld = {
+			positionen: [],
+			
+			lade: function(loc,loc_speicher) {
+				//funktion lädt komplette Felddaten
+				this.positionen[loc] = Speicher[0][loc_speicher];	
+			},
+			
+			restart: function() {	
+				for (var i=0;i<9;i++) {
+					this.lade(i,i);
+					this.positionen[i].lage = 0;//standartlage: 0, nach links
+				};
+				for (var i=0;i<9;i++) this.refreshPasszahl(i);			
+				if (config.drawoften) this.drawfield();
+			},
+			
+			refreshPasszahl: function(pos) {
+				var partnerlist = partner(pos);
+				var passzahl = 4;
+				for (var i=0;i<4;i++) this.positionen[pos].kante[i].passt = true;
+				
+				for (var i=0;i<partnerlist.length;i++){
+					//Seiten passend?
+					var kante1 = this.positionen[pos].getKante(partnerlist[i][0]);
+					var kante2 = this.positionen[partnerlist[i][1]].getKante((partnerlist[i][0]+2)%4);
+					
+					if (kante1.farbe != kante2.farbe || kante1.form == kante2.form) {
+						passzahl = passzahl-1;
+						kante1.passt = false;
+					};
+				};
+				
+				this.positionen[pos].passzahl = passzahl;//speichern
+				return passzahl;//an wie vielen Seiten richtig
+			},
+			
+			tablepoints: function() {
+				//Summierte die Passzahlen des Feldes und gibt sie aus
+				var points = 0;
+				for (var i = 0; i <= 8; i++) points += this.positionen[i].getPasszahl();
+				if (config.drawoften) id_Stats.innerHTML = "Spielfeld.tablepoints: " + points +"<br>";
+				return points;
+			},
+			
+			tausche: function(karte1,karte2) {
+				//tauscht zwei Karten
+				if (karte1 <= 8 && karte1>=0 && karte2 <= 8 && karte2>=0) {
+					if (karte1!=karte2) {
+						log += "Tausche: " + karte1 + " mit " + karte2 + "<br>";
+						var temp = this.positionen[karte1];
+						this.positionen[karte1] = this.positionen[karte2];
+						this.positionen[karte2] = temp;
+						//refresh_partners(karte1);
+						//refresh_partners(karte2);
+					}else console.warn("Das Tauschen mit sich selber ist nicht nötig.")
+				}else console.error("Illegaler Aufruf der tauschen-Funktion. karte1: "+karte1+" karte2: "+karte2);
+				this.refreshPasszahl(karte1);
+				this.refreshPasszahl(karte2);
+			},
+			
+			drehen : function(pos) {
+				/*dreht eine Karte im Uhrzeigersinn
+				wäre als Funktion einer jeden karte programmiertechscnich besser,
+				aber der cleverfieldfieldrefresh aufruf braucht die position und diese kann nur mit hohem Ressourcenaufwand ermittelt werden */
+				var tempSide = this.positionen[pos].kante[0];
+				this.positionen[pos].kante[0] = this.positionen[pos].kante[3];
+				this.positionen[pos].kante[3] = this.positionen[pos].kante[2];
+				this.positionen[pos].kante[2] = this.positionen[pos].kante[1];
+				this.positionen[pos].kante[1] = tempSide;
+				
+				
+				
+				//for (var i=0;i<4;i++) this.positionen[pos].kante[i].seite = (this.positionen[pos].kante[i].seite+1) % 4;
+				this.positionen[pos].lage = (this.positionen[pos].lage+1) % 4;
+				this.refreshPasszahl(pos);
+				if (config.drawoften) Spielfeld.draw(pos);
+				//refresh_partners(pos);
+			},
+			
+			inlagedrehen : function(loc,neuelage){
+				//dreht Karte in gewünschte Lage
+				/*if (neuelage<0 || neuelage>3) {
+					console.warn("inlagedrehen wurde illegal aufgerufen. Passe Format an...");
+					neuelage=fixformat(neuelage);//in delphi referenzparameter benutzen
+				}*/
+				var old = new Array();
+				for (var i=0;i<4;i++) old[i] = this.positionen[loc].kante[(i+this.positionen[loc].lage) % 4];//Karte speichern
+				if(config.enablelog) console.info(old);
+				
+				for (var j=0;j<4;j++){//jede Seite
+					var partnerside = (4+j-neuelage) % 4;
+					if(config.enablelog) console.log("tausche Seite "+j +" mit vorheriger "+partnerside+": "+this.positionen[loc].kante[j]+"<-"+old[partnerside]);
+					this.positionen[loc].kante[j] = old[partnerside];//wiederherstellen
+					this.positionen[loc].kante[j].passt = false;//passt nicht mehr
+				};
+				
+				//Position aktualisieren	
+				this.positionen[loc].lage = parseInt(neuelage);
+				if(config.enablelog) console.groupEnd();
+				this.refreshPasszahl(loc);
+				if (config.drawoften) this.draw(loc)
+			},
+			
+			Maustausch: function(){
+				var pos = parseInt(window.event.layerX/166)+parseInt(window.event.layerY/166)*3;
+				if (click_partner1 >= 0 && click_partner1 != pos){
+					Spielfeld.tausche(click_partner1,pos);
+					click_partner1 = -1;
+					}else {
+						click_partner1=pos;}		
+				Spielfeld.drawfield();
+			},
+			
+			Mausdrehen: function(){
+				Spielfeld.drehen(parseInt(window.event.layerX/166)+parseInt(window.event.layerY/166)*3);
+			},
+			
+			draw : function(pos) {
+				//zeichnet eine Karte
+				
+				/*function colortoword(color) {
+					//wandelt name in hex um
+					switch (color) {
+						case 0: return "gelb";
+						break;
+						case 1: return "rot";
+						break;
+						case 2: return "blau";
+						break;
+						case 3: return "grün";
+						break;
+					};
+				};*/
+				
+				function colortohex(color) {
+					//wandelt name in hexcode um
+					switch (color) {
+						case 0: return "#EBED01";
+						break;
+						case 1: return "#f00";
+						break;
+						case 2: return "#00f";
+						break;
+						case 3: return "#0f0";
+						break;
+					}
+				};
+				
+				function formtoword(word) { if (word) return "Kopf"; else return "Fuss";}				
+				
+				//clear card
+				ctx.fillStyle = "#efefef";
+				ctx.fillRect(pos % 3*166,Math.floor(pos/3)*166,166,166);
+				
+				if (click_partner1==pos){
+					ctx.strokeStyle = "#002B61";
+					ctx.lineWidth = 3;
+				} else {
+					ctx.strokeStyle = "#000";
+					ctx.lineWidth = 2;
+				}
+				ctx.fillStyle = "#cfcfcf";
+				//Kante 0
+				ctx.beginPath();
+				ctx.moveTo(pos % 3*166, Math.floor(pos/3) *166);//oben links
+				ctx.lineTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				ctx.lineTo(pos % 3*166, Math.floor(pos/3) *166+166);//unten links
+				ctx.lineTo(pos % 3*166, Math.floor(pos/3) *166);//oben links
+				if (this.positionen[pos].getKante(0).passt) ctx.fill();
+				ctx.stroke();
+				//Kante 1
+				ctx.beginPath();
+				ctx.moveTo(pos % 3*166, Math.floor(pos/3) *166);//oben links
+				ctx.lineTo((pos % 3+1)*166, Math.floor(pos/3) *166);//oben rechts
+				ctx.lineTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				ctx.lineTo(pos % 3*166, Math.floor(pos/3) *166);//oben links
+				if (this.positionen[pos].getKante(1).passt) ctx.fill();
+				ctx.stroke();
+				//Kante 2
+				ctx.beginPath();
+				ctx.moveTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				ctx.lineTo((pos % 3+1)*166, Math.floor(pos/3) *166);//oben rechts
+				ctx.lineTo((pos % 3+1)*166, Math.floor(pos/3) *166+166);//unten rechts
+				ctx.lineTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				if (this.positionen[pos].getKante(2).passt) ctx.fill();
+				ctx.stroke();
+				//Kante 3
+				ctx.beginPath();
+				ctx.moveTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				ctx.lineTo(pos % 3*166, Math.floor(pos/3) *166+166);//unten links
+				ctx.lineTo((pos % 3+1)*166, Math.floor(pos/3) *166+166);//unten rechts
+				ctx.lineTo((pos % 3+0.5)*166,Math.floor(pos/3) *166+83);//mitte
+				if (this.positionen[pos].getKante(3).passt) ctx.fill();
+				ctx.stroke();
+				
+				ctx.lineWidth = 3;
+				var laenge=20;
+				ctx.beginPath();
+				switch(this.positionen[pos].lage){
+					case 0:
+						ctx.moveTo(pos % 3*166,Math.floor(pos/3) *166+83);//mitte links
+						ctx.lineTo(pos % 3*166+laenge,Math.floor(pos/3) *166+83);
+					break;
+					case 1:
+						ctx.moveTo(pos % 3*166+83,Math.floor(pos/3) *166);//mitte oben
+						ctx.lineTo(pos % 3*166+83,Math.floor(pos/3) *166+laenge);
+					break;
+					case 2:
+						ctx.moveTo(pos % 3*166+166-laenge,Math.floor(pos/3) *166+83);//mitte rechts
+						ctx.lineTo(pos % 3*166+166,Math.floor(pos/3) *166+83);
+					break;
+					case 3:
+						ctx.moveTo(pos % 3*166+83,Math.floor(pos/3) *166+166-laenge);//mitte unten
+						ctx.lineTo(pos % 3*166+83,Math.floor(pos/3) *166+166);
+					break;
+				};
+				ctx.stroke();
+				
+				//Wörter+Zahlen
+				ctx.font = "bold 19pt Helvetica";
+				ctx.shadowOffsetX = 1;
+				ctx.shadowOffsetY = 1;
+				ctx.shadowBlur    = 1;
+				ctx.shadowColor = "rgba(80,80,80, 100)";
+				
+				ctx.fillStyle = colortohex(this.positionen[pos].getKante(0).farbe);
+				//ctx.fillText(colortoword(this.positionen[pos].getKante(0).farbe), pos % 3*166+10, Math.floor(pos/3) *166+83);
+				ctx.fillText(formtoword(this.positionen[pos].getKante(0).form), pos % 3*166+10, Math.floor(pos/3) *166+90);
+				
+				ctx.fillStyle = colortohex(this.positionen[pos].getKante(1).farbe);
+				//ctx.fillText(colortoword(this.positionen[pos].getKante(1).farbe), pos % 3*166+65, Math.floor(pos/3) *166+31);
+				ctx.fillText(formtoword(this.positionen[pos].getKante(1).form), pos % 3*166+58, Math.floor(pos/3) *166+40);
+				
+				ctx.fillStyle = colortohex(this.positionen[pos].getKante(2).farbe);
+				//ctx.fillText(colortoword(this.positionen[pos].getKante(2).farbe), pos % 3*166+110, Math.floor(pos/3) *166+83);
+				ctx.fillText(formtoword(this.positionen[pos].getKante(2).form), pos % 3*166+100, Math.floor(pos/3) *166+90);
+				
+				ctx.fillStyle = colortohex(this.positionen[pos].getKante(3).farbe);
+				//ctx.fillText(colortoword(this.positionen[pos].getKante(3).farbe), pos % 3*166+66, Math.floor(pos/3) *166+140);
+				ctx.fillText(formtoword(this.positionen[pos].getKante(3).form), pos % 3*166+58, Math.floor(pos/3) *166+150);
+				
+				//Passzahl
+				ctx.fillStyle = "#000000";
+				ctx.font = "bold 17pt Helvetica";
+				ctx.shadowColor = "rgba(150,150,150, 100)";
+				ctx.fillText(this.positionen[pos].getPasszahl(),pos % 3*166+76,Math.floor(pos/3) *166+88);
+				ctx.fillText(this.positionen[pos].nummer,pos % 3*166+10,Math.floor(pos/3) *166+20);	
+				ctx.shadowColor = "rgba(250,250,250, 0)";
+			},
+		
+			drawfield: function() {
+			//gibt das komplette Feld erneut aus
+			
+				for (var i=0;i<=8;i++) {
+					Spielfeld.refreshPasszahl(i);
+					Spielfeld.draw(i);
+				};
+			},
+			
+			randomize: function(){
+				for (var i=0;i<=8;i++){
+					do {
+						partner1 = Math.floor(Math.random()*9);
+						partner2 = Math.floor(Math.random()*9);
+					} while (partner1==partner2);
+
+					this.tausche(partner1,partner2);
+					this.inlagedrehen(partner1,Math.round(Math.random()*3));
+					this.inlagedrehen(partner2,Math.round(Math.random()*3));
+				};
+				/*
+				//andere Möglichkeit aber unsicher ob besser. Etwa genau so schnell.r
+				var gewesen=new Array(8);
+				for (var i=0;i<9;i++) gewesen[i]=false;
+				for (var i=0;i<9;i++) {
+					do {
+						loc = Math.floor(Math.random()*9);
+					} while (gewesen[loc]==true);
+					this.lade(loc,i);
+					gewesen[loc]=true;
+					this.inlagedrehen(i,Math.round(Math.random()*3));
+					console.info(loc);
+					console.info(gewesen);
+				};
+				for (var i=0;i<9;i++) Spielfeld.refreshPasszahl(i);
+				if (config.drawoften) Spielfeld.draw();
+
+				*/
+			},
+			
+			niedrigstePasszahl: function(min,max) {
+			//gibt die Position der Karten mit den niedrigsten Passzahlen an. min und max geben den Definitionsbereich der gesuchten Passzahl an
+				if (min<0 || max>4) return null;
+				var passzahl_old = 5;
+				var counter = 0;
+				var position = new Array(9);
+				for (var i = 0; i <= 8; i++) {//niedrigste Passzahl finden
+					var passzahl = this.getPasszahl(i);
+					if (passzahl < passzahl_old && passzahl>=min && passzahl<=max){
+						passzahl_old = passzahl;
+						delete passzahl;
+					};
+				};
+				for (var i = 0; i <= 8; i++) {//niedrigste Passzahl an den Positionen
+					passzahl = this.getPasszahl(i);
+					if (passzahl_old==passzahl) {
+						position[counter] = i;
+						counter++;
+					};
+				};
+				return position;
+			}
+		};
+			
+		function bruteforce() {
+			/*Wiederhole bis eine Lösung gefunden ist:
+			erstelle einer "Drehungsbewertung": Wieviele Kanten haben einen Partner (es gibt 36 Kanten, 27 müssen einen Partner haben damit eine Lösung möglich ist)
+			wenn mehr als 26 Partner: versuche eine Lösung mit BruteForce ohne drehen
+			wenn weniger als 27 Partner: drehe eine Karte
+			*/
+			var starttime = new Date();
+			var rekord = 12;
+			var level = -1;
+			var value = new Array();
+			for (var i = 0; i < 9; i++) value[i] = 0;
+			for (var i = 0; i < 9; i++) Spielfeld.lade(0,i);
+	
+			function visit(k) {
+				//rekursiv
+				level = level+1;
+
+				value[k] = level;
+
+				if (level == 8){
+					for (var i = 0; i < 9; i++) Spielfeld.lade(i,value[i]);
+					if (bruteturn()==36) return nil;//sollte hier abbrechen falls tablepoints 36 betragen
+				} else
+					for (var i = 0; i < 9; i++) if (value[i] == 0) visit(i);
+		
+				level = level-1;
+				value[k] = 0;
+				delete i;
+			};
+			
+			visit(0);
+			
+			alert((new Date().getTime() - starttime.getTime())+"ms mit Bruteforce");
+			refresh();
+		};
+		
+		function bruteturn(){
+		//dreht die Karten in die beste Lage indem nach bruteforce alles Möglichkeiten durchgegangen werden
+		//4^9=262.144 durchgänge
+			for (var i=0;i<9;i++) Spielfeld.inlagedrehen(i,0);
+			var highest = Spielfeld.tablepoints();
+			var loc = 0;
+			do {
+				tablepoints = Spielfeld.tablepoints();
+				if (tablepoints > highest) {
+					highest = tablepoints;
+					console.info("Bessere Lage gefunden mit "+ highest+" Punkten");
+					savefield(false,highest);
+				};				
+				Spielfeld.drehen(loc);
+				var partners = partner(loc);
+				for (var i=0;i < partners.length;i++) Spielfeld.refreshPasszahl(partners[i][1]);
+				
+				if (Spielfeld.positionen[loc].lage == 0)
+					loc++;
+				else
+					loc = 0;
+			} while(loc<9);
+			
+			//laden
+			loadfield(-1);
+			return highest;
+		};
+		
+		function speedtest_bruteforce(){
+		//ist das gleiche wie bruteturn nur mit Zeitmesser und das Ergebnis mit 9! multipliziert wird
+			var starttime=new Date();
+			bruteturn();
+			var time = new Date().getTime() - starttime.getTime();
+			alert(time+"ms mit bruteturn(). Bruteforce dauert demnach ca. "+ (362880/8*time)/3600000+" Stunden");
+			refresh();
+		};	
+		
+		
+		
+		function autoturn() {
+			//Es sind 262.144 Fälle zu prüfen
+			//dreht die Karten auf dem Spielfeld so, dass die Tablepoints am höchsten sind, (ohne tauschen!)
+			
+			function makeposbetter(loc){
+				/*analysiert eine Karte und legt sie besser hin*/
+				var lage_vor_check=Spielfeld.positionen[loc].getPasszahl();
+				var lagehatpasszahl = new Array();
+				var counter = 0;
+				
+				//Daten sammeln
+				Spielfeld.inlagedrehen(loc,0);
+				do {
+					lagehatpasszahl[counter] = Spielfeld.positionen[loc].getPasszahl();
+					Spielfeld.drehen(loc);
+					counter++;
+				} while (lagehatpasszahl[counter]!=4 && counter<4)//drehe die Karte so oft, bis die beste Lage gefunden ist oder einmal rum ist
+				
+				//beste Lage finden anhand der Liste lagepasszahl[j]
+				var hoechster = 4;
+				var gefunden = false;
+				do {
+					for (var lage = 0; lage < 4; lage++)
+						if (lagehatpasszahl[lage]==hoechster){
+							gefunden = true;
+							break;
+					};
+					hoechster = hoechster-1;
+				} while(gefunden==false && hoechster>=0)
+				Spielfeld.inlagedrehen(loc,lage);
+				
+				//nachbarkarten
+				if (lage_vor_check!=Spielfeld.positionen[loc].lage){//wenn Karte überhaupt anders ist
+					var partners = partner(loc);
+					for (var i=0;i < partners.length;i++) Spielfeld.refreshPasszahl(partners[i][1]);
+				}
+			};
+						
+			var breakautofinish=false;//zum debuggen auf false, sollte einzelsschritte sichbarer machen
+			var tblpoints_at_start = Spielfeld.tablepoints();
+			
+			do {
+				var tblps_old = Spielfeld.tablepoints();
+				
+				//drehe bei jedem Neudurchgang eine Karte=> erstelle ein neues Feld 
+				for (var i = 0; i <= 8; i++)
+					for (var j = 0; j <= 3; j++)
+					{					
+						makeposbetter(i);
+						
+						//falls ein besseres Feld gefunden ist->Feld speichern
+						var tbl_points = Spielfeld.tablepoints();
+						if (tbl_points > tblps_old) {
+							tblps_old = tbl_points;
+							savefield(false,tbl_points);
+						};
+						
+						Spielfeld.inlagedrehen(i,j);
+					};
+				//Feld wiederherstellen
+				loadfield(-1);
+			
+			} while (Spielfeld.tablepoints() <= tblpoints_at_start && breakautofinish);
+		};
+		
+		function autosolve() {
+			//unfertig
+			//Die Karte mit der niedrigsten Passzahl wird gesucht und mit der Karte getauscht, die die gleiche Passzahl hat.
+			//Wenn diese nicht vorhanden ist wird die nächst schwächere Karte genommen
+			log = "<br>Autosolve<br>";
+			autoturn();
+			minPasszahl = 0;
+			var i = 1;
+			while (Spielfeld.tablepoints()<30) {
+				//niedrigste Posfinden
+				var niedrigste = Spielfeld.niedrigstePasszahl(minPasszahl,4);
+				log+="niedrigste:"+niedrigste+"<br>";
+				//wenn es eine neue Karte gibt, weitermachen, sonst das minimum erhöhen
+				if (niedrigste != niedrigstePasszahl_old) {
+					var niedrigstePasszahl_old = niedrigste;
+					
+					//Partner finden
+					var partner1 = niedrigste[i];
+					//Wenn die zweitniedrigste nicht da ist, eine schlechtere finden
+					if (!niedrigste[i+1]) var partner2 = Spielfeld.niedrigstePasszahl(minPasszahl+i,4);
+						else var partner2 = niedrigste[i+1];
+		
+					i++;
+					log+="Partner1: "+partner1+"<br>";
+					log+="Partner2: "+partner2+"<br>";
+					Spielfeld.tausche(partner1, partner2);
+					autoturn();
+				}else {
+					//neue niedrigste Passzahl finden
+					minPasszahl++;
+					log+="minPasszahl: "+ minPasszahl +"<br>";
+					i = 0;
+				};
+			};
+			refresh();
+		}
+		
+		var backtracking = {
+			start: function(){
+				var starttime = new Date();
+				for (var i=0;i<9;i++) Spielfeld.inlagedrehen(i,0);
+				this.loeseKarte(0);
+				alert((new Date().getTime() - starttime.getTime())+"ms mit rekursivem Backtracking.");
+				refresh();
+			},
+			
+			loeseKarte : function(karte) { 
+				if (karte > 8) return true; 
+                var span = 1; 
+                do {
+                    var startseite = Spielfeld.positionen[karte].lage 
+                    do { 
+                       Spielfeld.refreshPasszahl(karte); 
+                       if (Spielfeld.positionen[karte].getKante(0).passt && Spielfeld.positionen[karte].getKante(1).passt && backtracking.loeseKarte(karte+1)) return true; 
+						Spielfeld.drehen(karte); 
+                     } while (startseite != Spielfeld.positionen[karte].lage) 
+					 // wenn schonmal getauscht wurde: der tausch hat nix gebracht, mache den wieder rückgängig (ist wichtig damit auch alle Permutationen möglich sind 
+                    if (span > 1) Spielfeld.tausche(karte, karte + span); 
+                    span++; 
+                    if ((karte + span) <= 8) 
+                    Spielfeld.tausche(karte, karte + span); 
+                 } while ((karte + span) <= 8) 
+                 return false; 
+          	 }
+        };
+		
+		function randomswitchsolve(mintabl){
+			if ((mintabl>36) || (mintabl<2) || (mintabl % 2 == 1)) {
+				console.error("Illegaler Aufruf der randomswitchsolve() da "+mintabl+" Tablepoints gefordert wurden, was unmöglich ist. Parameter: 1<Parameter>37; Parameter muss gerade sein");
+				return null
+			};
+			
+			var starttime = new Date();
+			var partner1, partner2;
+			var max_trys = 10;
+			var trys = 0;
+			while (Spielfeld.tablepoints() < mintabl) {
+				trys++;
+				
+				//versucht 25 mal das zufällig hinzubekommen und wen er dann noch festsitz fängt er neu an
+				if (trys>=max_trys)Spielfeld.restart();
+				
+				do{
+					do partner1 = Math.round(Math.random()*8);
+						while (Spielfeld.positionen[partner1].getPasszahl() == 4);
+					do partner2 = Math.round(Math.random()*8);
+						while (Spielfeld.positionen[partner2].getPasszahl() == 4);
+				}while (partner1==partner2);//nicht sich selber
+				
+				Spielfeld.tausche(partner1,partner2);
+				autoturn();
+			};
+			alert((new Date().getTime() - starttime.getTime())+"ms mit randomswitchsolve("+mintabl+")");
+			refresh();
+		};
+				
+		function randomsolve(mintabl){
+			if ((mintabl>36) || (mintabl<2) || (mintabl % 2 == 1)) {
+				console.error("Illegaler Aufruf der randomsolve() da "+mintabl+" Tablepoints gefordert wurden, was unmöglich ist. Parameter: 1<Parameter>37; Parameter muss gerade sein");
+				return null
+			};
+			var starttime=new Date();
+			var partner1, partner2;
+			while (Spielfeld.tablepoints() < mintabl){
+			
+				do {
+					var partner1 = Math.floor(Math.random()*9);
+					var partner2 = Math.floor(Math.random()*9);
+				} while (partner1 == partner2);
+				
+			
+				Spielfeld.tausche(partner1,partner2);
+				Spielfeld.inlagedrehen(partner1,Math.round(Math.random()*3));
+				Spielfeld.inlagedrehen(partner2,Math.round(Math.random()*3));
+			};
+			alert((new Date().getTime() - starttime.getTime())+"ms mit randomsolve("+mintabl+")");
+			refresh();
+		};
+		
+		function speedtest_randomsolve(durchgaenge){
+			var starttime=new Date();
+			var partner1, partner2;
+			var counter=0
+			while (counter < durchgaenge){
+				counter++;
+				do {
+					var partner1 = Math.floor(Math.random()*9);
+					var partner2 = Math.floor(Math.random()*9);
+				} while (partner1 == partner2);
+				
+			
+				Spielfeld.tausche(partner1,partner2);
+				Spielfeld.inlagedrehen(partner1,Math.round(Math.random()*3));
+				Spielfeld.inlagedrehen(partner2,Math.round(Math.random()*3));
+			};
+			var time = (new Date().getTime() - starttime.getTime());
+			var gesamtzeit = time/durchgaenge*(362880*Math.pow(4,9)/8)/3600000;
+			alert(durchgaenge+" Durchgaenge brauchten " + time + "ms. Das Macht "+(durchgaenge*1000/time) + " Durchgaenge / s. Geschätze Gesamteit:"+gesamtzeit+"h");
+		}
+		
+
+		
+		function logAusgeben(){
+		if (config.enablelog == true)
+			document.getElementById("Log").innerHTML=log;
+		};
+				
+		function refresh() {
+			Spielfeld.drawfield();
+			logAusgeben();
+			id_Stats.innerHTML += "Spielfeld.tablepoints: " + Spielfeld.tablepoints()	+"<br>";
+			if (config.enablelog) document.forms[0].cb_enablelog.checked=true
+				else document.forms[0].cb_enablelog.checked=false;
+			if (config.drawoften) document.forms[0].cb_drawoften.checked=true
+				else document.forms[0].cb_drawoften.checked=false;
+		}
+		
+	
+		function refresh_partners(pos){
+			var partnerarray = partner(pos)
+			for (var i=0; i < partnerarray.length; i++){
+				Spielfeld.refreshPasszahl(partnerarray[i][1]);
+				if (config.drawoften) Spielfeld.draw(partnerarray[i][1]);
+			};
+			delete partnerarray;			
+		};		
+		
+		function corruption_test(){
+			//prüft ein mal ob die Kartendaten noch intakt sind, prüft nicht ob ganze Karte doppelt ist
+			console.group("Prüfung auf korrupte Daten");
+			var in_Ordnung = true;
+			for (var i=0;i<=8;i++){
+				if (Spielfeld.positionen.length!=9) {
+					console.error("Irgendwie ist das ganze Feld im Arsch!");
+					in_Ordnung=false;
+				};
+				var karte = Spielfeld.positionen[i];
+				if (!karte){
+					in_Ordnung = false;
+					console.error("Es fehlt Position "+i);
+				};
+				
+				for (var j=0;j<4;j++){
+					if (!karte.kante[j]) {
+						in_Ordnung=false;
+						console.error("Es fehlt bei Pos "+i+" Kante "+ i);
+					};
+					for (var k=0;k<3;k++){
+						var kante2 = j+k+1;
+						if (kante2>=4) kante2=kante2-4;
+						if (String(karte.kante[j].farbe)+String(karte.kante[j].form) == String(karte.kante[kante2].farbe)+String(karte.kante[kante2].form)){
+							in_Ordnung=false;
+						 	console.error("Bei pos "+i+" gibt es wohl eine doppelte Seite da die Form + Farbe gleich ist, da Kante "+j+ " = Kante "+kante2);
+						};
+					};
+				};
+			};
+			if (in_Ordnung) console.info("Daten sind, soweit geprüft, in Ordnung.");
+			console.groupEnd()
+		};
+		
+		function partner(pos){
+			//liefert Array mit allen umliegenden Karten, partner()[0]=Pos;partner()[1]=location
+			
+			if 	(partnersave[pos]){
+				return partnersave[pos]
+			}else {	
+				
+				var partners = new Array();
+					
+				//Partnerkarten ermitteln
+				var card=0;
+				if (pos % 3 != 0){
+					partners[card] = new Array();
+					partners[card][0]=0;//Karte links
+					partners[card][1]=pos-1;//Position
+					card++;
+				}
+				
+				if (pos>=3){
+					partners[card] = new Array();
+					partners[card][0]=1;//Karte oben
+					partners[card][1]=pos-3;//Position
+					card++;
+				}
+				
+				if (pos% 3 - 2!= 0){
+					partners[card] = new Array();
+					partners[card][0]=2;//Karte rechts
+					partners[card][1]=pos+1;//Position
+					card++;
+				}
+				
+				if (pos<=5){
+					partners[card] = new Array();
+					partners[card][0]=3;//Karte unten
+					partners[card][1]=pos+3;//Position
+				};
+				
+				partnersave[pos]=partners;
+				return partners;
+			}
+		};
+		
+		function fixformat(n){
+		//wandelt jede Zahl in eine Lage der 0-3 Lagen zu
+			return Math.abs(n) % 4;
+		};
+		
+		function speedtest_drehen(n){
+			var starttime = new Date();
+			for (var i=0;i<n;i++) Spielfeld.drehen(0);
+			alert((new Date().getTime() - starttime.getTime())+"ms mit drehen");
+		};
+		
+		function speedtest_inlagedrehen(n){
+			var starttime = new Date();
+			for (var i=0;i<n;i++) Spielfeld.inlagedrehen(0,0);
+			alert((new Date().getTime() - starttime.getTime())+"ms mit inlagedrehen.");
+		};
+		
+		
+		Spielfeld.restart();
+	</script>
+</head>
+<body>
+	<h2>Solver by Benedikt Vogler in JS 0.4</h2>
+	<p>Mit einem Klick auf die erste und danach auf die zweite Karte, können Karten getauscht werden. Mit dem Scrollrad können die Karten gedreht werden. Drawoften muss leider noch aktiv dafür sein.</p>
+	<canvas id="Spielfeld" width="500" height="500" onclick="Spielfeld.Maustausch()" onMouseWheel="Spielfeld.Mausdrehen()">KEIN HTML5! Bitte nicht mehr den Internet Explorer. Es gibt so schöne Dinge wie Chrome, Safari und Firefox.</canvas><br>
+	<div id="Options">
+		Lösungsalgorithmen:<br />
+		<input type="button" onclick="autosolve();" value="autsolve()" disabled=disabled />
+		<input type="button" onclick="bruteforce();" value="bruteforce()"/>
+		<input type="button" onclick="backtracking.start();" value="backtracking()"/>
+		<input type="button" onclick="randomswitchsolve(document.getElementById('Parameterbox').value);" value="randomswitchsolve(parameter)"/>
+		<input type="button" onclick="randomsolve(document.getElementById('Parameterbox').value);" value="randomsolve(parameter)" /><br><hr>
+		Kontrollzentrum<br>
+		Befehle:<br>
+		<input type="text" id="Parameterbox" value="2" />Paramter<br>
+		<input type="button" onclick="autoturn();refresh();" value="autoturn();refresh();" />
+		<input type="button" onclick="refresh();" value="refresh()" /><br>
+		<input type="button" onclick="Spielfeld.drawfield()" value="drawfield()" />
+		<input type="button" onclick="refresh_partners(document.getElementById('Parameterbox').value)" value="refresh_partners(parameter)"/>
+		<input type="button" onclick="Spielfeld.restart()" value="restart()"/>
+		<input type="button" onclick="Spielfeld.inlagedrehen(0,document.getElementById('Parameterbox').value)" value="inlagedrehen(0,parameter)"/>
+		<input type="button" onclick="Spielfeld.drehen(parseInt(document.getElementById('Parameterbox').value))" value="drehen(parameter)"/>
+		<input type="button" onclick="corruption_test()" value="corruption_test()"/>
+		<input type="button" onclick="Spielfeld.randomize();" value="Spielfeld.randomize()"/><br>
+		<input type="button" onclick="speedtest_randomsolve(document.getElementById('Parameterbox').value);" value="speedtest_randomsolve(durchgaenge)"/>
+		<input type="button" onclick="speedtest_bruteforce();" value="speedtest_bruteforce()" />
+		<hr>
+		Einstellungen:<br>
+		<form name="Einstellungen">
+			<input type="checkbox" name="cb_enablelog" onclick="config.enablelog=document.forms[0].cb_enablelog.checked">enablelog<br>
+			<input type="checkbox" name="cb_drawoften" onclick="config.drawoften=document.forms[0].cb_drawoften.checked">drawoften<br>
+		</form>
+	</div>
+	<div id="Stats" style="position:absolute;top:10px;right:50px;border:1px solid;"></div>
+	<div id="Log" style="position:absolute;top:10px;right:50px;border:1px solid;"></div>
+	<br><br><br>
+	<p style="position:relative;clear:both;">Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+	<script type="application/javascript">
+		id_Spielfeld = document.getElementById("Spielfeld");
+		id_Stats = document.getElementById("Stats");
+		ctx = id_Spielfeld.getContext("2d");
+		for (var i=0;i<9;i++) partner(i);//partnerliste generieren
+		
+		refresh();
+	</script>
+</body>
+</html>

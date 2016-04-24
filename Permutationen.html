@@ -1,0 +1,35 @@
+<head>
+	<title>Permutationsalgorithmus nach Alexander Bogomolyn</title>
+	<script type="text/javascript">
+		function print(size) {
+			if (value != 0) {
+				for (var i = 0; i < size; i++) document.write("&nbsp;", value[i] );
+		    	document.write("<br>");
+		 	 };
+		};		
+		
+		function visit(N, k) {
+			level = level+1;
+			value[k] = level;
+		
+			if (level == N-1)
+				print(N);
+			else
+				for (var i = 0; i < N; i++) if (value[i] == 0) visit(N, i);
+		
+			level = level-1;
+			value[k] = 0;
+		};		
+		
+		function start(n) {
+			level = -1;
+			value = new Array();
+			for (var i = 0; i < n; i++) value[i] = 0;
+			visit(n, 0);
+		};
+	</script>
+</head>
+<body>
+	<H1>Permutationsalgorithmus nach Alexander Bogomolyn</H1>
+	<a href="javascript:start(3);">start</a>
+</body>
