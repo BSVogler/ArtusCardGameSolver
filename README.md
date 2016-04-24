@@ -1,5 +1,5 @@
 # ArtusCardGameSolver
-"Artus Puzzle", "Affenspiel", "Hexenspiel", "Legespiel" solver written for my "Besondere Lernleistung"
+"Artus Puzzle", "Affenspiel", "Hexenspiel", "Legespiel" solver written for my "Facharbeit"
 
 ### Abstract
 Conversing worlds, media and problems in digital forms is a big part of computer science. Video games, animation, robotics kimbinatorik are some examples for such conversions. The most importsant parts of the application are shown.
